@@ -1,6 +1,66 @@
-import Head from 'next/head'
+import Head from "next/head";
+import { useRef, useEffect, useCallback } from "react";
+import * as faceapi from "face-api.js";
 
 export default function Home() {
+  const videoRef = useRef();
+  const canvasRef = useRef();
+  const videoHeight = 480;
+  const videoWidth = 640;
+
+  const startVideo = () => {
+    navigator.mediaDevices
+      .getUserMedia({ video: true })
+      .then((currentStream) => {
+        videoRef.current.srcObject = currentStream;
+      })
+      .catch((err) => {
+        console.error(err);
+      });
+  };
+
+  const faceDetection = async () => {
+    setInterval(async () => {
+      const detections = await faceapi
+        .detectAllFaces(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceExpressions();
+      canvasRef.current.innerHtml = faceapi.createCanvasFromMedia(
+        videoRef.current
+      );
+      faceapi.matchDimensions(canvasRef.current, {
+        width: videoWidth,
+        height: videoHeight,
+      });
+      const resized = faceapi.resizeResults(detections, {
+        width: videoWidth,
+        height: videoHeight,
+      });
+      // to draw the detection onto the detected face i.e the box
+      faceapi.draw.drawDetections(canvasRef.current, resized);
+      //to draw the the points onto the detected face
+      faceapi.draw.drawFaceLandmarks(canvasRef.current, resized);
+      //to analyze and output the current expression by the detected face
+      faceapi.draw.drawFaceExpressions(canvasRef.current, resized);
+    }, 1000);
+  };
+
+  const loadModels = useCallback(() => {
+    Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri("/models"),
+      faceapi.nets.faceLandmark68Net.loadFromUri("/models"),
+      faceapi.nets.faceRecognitionNet.loadFromUri("/models"),
+      faceapi.nets.faceExpressionNet.loadFromUri("/models"),
+    ]).then(() => {
+      faceDetection();
+    });
+  }, []);
+
+  useEffect(() => {
+    startVideo();
+    videoRef && loadModels();
+  }, [loadModels]);
+
   return (
     <>
       <Head>
@@ -9,9 +69,16 @@ export default function Home() {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
-      <main >
-
+      <main>
+        <div>
+          <div id="camera-preview" className="overlay">
+            <video crossOrigin="anonymous" ref={videoRef} autoPlay />
+          </div>
+          <div id="face-detection" className="overlay">
+            <canvas ref={canvasRef} />
+          </div>
+        </div>
       </main>
     </>
-  )
+  );
 }
